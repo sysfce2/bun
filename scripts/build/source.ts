@@ -1350,6 +1350,15 @@ function emitCargo(n: Ninja, cfg: Config, name: string, spec: CargoBuild, input:
   // space. This is cargo's way of passing multi-argument flags unambiguously.
   const env: Record<string, string> = {
     CARGO_TERM_COLOR: "always",
+    // `rust-toolchain.toml` pins the channel. When cargo runs, rustup
+    // re-verifies the toolchain against the network every invocation —
+    // it pulls `https://static.rust-lang.org/dist/.../channel-rust-nightly.toml.sha256`
+    // even when the toolchain is already installed locally. On builders
+    // with flaky outbound network that turns into `error downloading
+    // file: tunnel error` and fails the whole build. Disable the
+    // auto-install + refresh flow; if the pinned toolchain is missing,
+    // rustup will error clearly rather than try to fetch it.
+    RUSTUP_AUTO_INSTALL: "0",
   };
   if (cfg.cargoHome !== undefined) env.CARGO_HOME = cfg.cargoHome;
   if (cfg.rustupHome !== undefined) env.RUSTUP_HOME = cfg.rustupHome;

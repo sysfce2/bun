@@ -130,7 +130,7 @@ export interface DevServerTest {
    */
   mainDir?: string;
 
-  skip?: ("win32" | "darwin" | "linux" | "ci")[];
+  skip?: ("win32" | "darwin" | "linux" | "ci" | "asan")[];
   /**
    * Only run this test.
    */

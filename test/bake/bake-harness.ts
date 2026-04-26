@@ -18,7 +18,7 @@ import { Matchers } from "bun:test";
 import { EventEmitter } from "node:events";
 // @ts-ignore
 import { dedent } from "../bundler/expectBundled.ts";
-import { bunEnv, bunExe, isASAN, isCI, isWindows, mergeWindowEnvs, tempDirWithFiles } from "harness";
+import { bunEnv, bunExe, isASAN, isCI, isDebug, isWindows, mergeWindowEnvs, tempDirWithFiles } from "harness";
 import { expect } from "bun:test";
 import { exitCodeMapStrings } from "./exit-code-map.mjs";
 
@@ -1688,7 +1688,13 @@ export function indexHtmlScript(htmlFiles: string[]) {
   ].join("\n");
 }
 
-const skipTargets = [process.platform, isCI ? "ci" : null].filter(Boolean);
+const skipTargets = [
+  process.platform,
+  isCI ? "ci" : null,
+  // Debug builds are ASAN-enabled. "asan" covers both the `bun-asan`
+  // binary and `bun-debug` so ASAN-sensitive skips work in both.
+  isASAN || isDebug ? "asan" : null,
+].filter(Boolean);
 
 function testImpl<T extends DevServerTest>(
   description: string,

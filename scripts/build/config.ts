@@ -11,7 +11,13 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlink
 import { homedir, arch as hostArch, platform as hostPlatform } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { NODEJS_ABI_VERSION, NODEJS_VERSION } from "./deps/nodejs-headers.ts";
-import { WEBKIT_VERSION } from "./deps/webkit.ts";
+// NOTE: `WEBKIT_VERSION` is imported from its own module to break the
+// cycle `deps/webkit.ts → flags.ts → config.ts → deps/webkit.ts`. Under
+// ECMAScript module semantics a mid-cycle re-entry returns bindings in
+// TDZ, and loaders that load dependents before the parent finishes
+// evaluating surface that as `Cannot access 'WEBKIT_VERSION' before
+// initialization` when `versionDefaults` below reads it.
+import { WEBKIT_VERSION } from "./deps/webkit-version.ts";
 import { assert, BuildError } from "./error.ts";
 import { clangTargetArch } from "./tools.ts";
 import { cyan, dim, green } from "./tty.ts";

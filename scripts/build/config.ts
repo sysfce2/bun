@@ -11,13 +11,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlink
 import { homedir, arch as hostArch, platform as hostPlatform } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { NODEJS_ABI_VERSION, NODEJS_VERSION } from "./deps/nodejs-headers.ts";
-// NOTE: `WEBKIT_VERSION` is imported from its own module to break the
-// cycle `deps/webkit.ts → flags.ts → config.ts → deps/webkit.ts`. Under
-// ECMAScript module semantics a mid-cycle re-entry returns bindings in
-// TDZ, and loaders that load dependents before the parent finishes
-// evaluating surface that as `Cannot access 'WEBKIT_VERSION' before
-// initialization` when `versionDefaults` below reads it.
-import { WEBKIT_VERSION } from "./deps/webkit-version.ts";
+import { WEBKIT_VERSION } from "./deps/webkit.ts";
 import { assert, BuildError } from "./error.ts";
 import { clangTargetArch } from "./tools.ts";
 import { cyan, dim, green } from "./tty.ts";
@@ -52,9 +46,8 @@ export interface Host {
 
 /**
  * Pinned version defaults. Each lives at the top of its own file
- * (deps/webkit-version.ts, zig.ts, deps/nodejs-headers.ts) — look there
- * to bump. Overridable via PartialConfig for testing (e.g. trying a
- * WebKit branch).
+ * (deps/webkit.ts, zig.ts, deps/nodejs-headers.ts) — look there to bump.
+ * Overridable via PartialConfig for testing (e.g. trying a WebKit branch).
  */
 const versionDefaults = {
   nodejsVersion: NODEJS_VERSION,
@@ -196,14 +189,6 @@ export interface Config {
   cargoHome: string | undefined;
   /** RUSTUP_HOME — passed to cargo invocations for reproducibility. */
   rustupHome: string | undefined;
-  /**
-   * Rust toolchain channel (e.g. `nightly-2025-12-10`) — read once from
-   * `rust-toolchain.toml` at configure time and passed via RUSTUP_TOOLCHAIN
-   * to cargo invocations. Without this, rustup tries to contact
-   * static.rust-lang.org every cargo call, which breaks offline/sandboxed
-   * builds even when the toolchain is already installed.
-   */
-  rustToolchain: string | undefined;
   /** Windows: MSVC link.exe path (to avoid Git's /usr/bin/link shadowing). */
   msvcLinker: string | undefined;
   /** Windows: llvm-rc for nested cmake (CMAKE_RC_COMPILER). */
@@ -327,13 +312,6 @@ export interface Toolchain {
   cargoHome: string | undefined;
   /** RUSTUP_HOME. Set alongside cargo; undefined when cargo is unavailable. */
   rustupHome: string | undefined;
-  /**
-   * Rust toolchain channel from `rust-toolchain.toml`. Passed via
-   * RUSTUP_TOOLCHAIN to cargo invocations so rustup doesn't re-check the
-   * channel against static.rust-lang.org on every build (which breaks in
-   * offline/sandboxed environments even when the toolchain is installed).
-   */
-  rustToolchain: string | undefined;
   /**
    * Windows only: absolute path to MSVC's link.exe. Set as the cargo linker
    * via CARGO_TARGET_<triple>_LINKER to prevent Git Bash's /usr/bin/link
@@ -836,7 +814,6 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
     cargo: toolchain.cargo,
     cargoHome: toolchain.cargoHome,
     rustupHome: toolchain.rustupHome,
-    rustToolchain: toolchain.rustToolchain,
     msvcLinker: toolchain.msvcLinker,
     rc: toolchain.rc,
     mt: toolchain.mt,

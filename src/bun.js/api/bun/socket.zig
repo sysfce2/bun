@@ -568,19 +568,28 @@ pub fn NewSocket(comptime ssl: bool) type {
             this.flags.handshake_complete = true;
             this.socket = s;
             if (this.socket.isDetached()) return;
+
+            const authorized = if (success == 1) true else false;
+            this.flags.authorized = authorized;
+
+            // During VM shutdown, the Listener (which embeds `handlers` for
+            // server sockets) may already have been finalized by the time
+            // uSockets fires this — `ctx.close()` in `Listener.deinit()` uses
+            // a clean TLS shutdown (code 0), which can leave the TCP socket
+            // open waiting for the peer's close_notify, and the subsequent
+            // `TLSSocket.finalize()` force-close then re-enters here via
+            // `us_internal_ssl_socket_close`. Resolve the VM via the global
+            // accessor (not `handlers.vm`) and bail before dereferencing
+            // `handlers` — mirrors the guard in `markInactive`.
+            if (jsc.VirtualMachine.get().isShuttingDown()) {
+                return;
+            }
+
             const handlers = this.getHandlers();
             log("onHandshake {s} ({d})", .{ if (handlers.mode == .server) "S" else "C", success });
 
-            const authorized = if (success == 1) true else false;
-
-            this.flags.authorized = authorized;
-
             var callback = handlers.onHandshake;
             var is_open = false;
-
-            if (handlers.vm.isShuttingDown()) {
-                return;
-            }
 
             // Use open callback when handshake is not provided
             if (callback == .zero) {
@@ -634,8 +643,6 @@ pub fn NewSocket(comptime ssl: bool) type {
 
         pub fn onClose(this: *This, _: Socket, err: c_int, _: ?*anyopaque) bun.JSError!void {
             jsc.markBinding(@src());
-            const handlers = this.getHandlers();
-            log("onClose {s}", .{if (handlers.mode == .server) "S" else "C"});
             this.detachNativeCallback();
             this.socket.detach();
             defer this.deref();
@@ -645,17 +652,28 @@ pub fn NewSocket(comptime ssl: bool) type {
                 return;
             }
 
-            const vm = handlers.vm;
+            // During VM shutdown, the Listener (which embeds `handlers` for
+            // server sockets) may already have been finalized by the time
+            // uSockets fires this close — `ctx.close()` in `Listener.deinit()`
+            // uses a clean TLS shutdown (code 0), which can leave the TCP
+            // socket open waiting for the peer's close_notify, and the
+            // subsequent `TLSSocket.finalize()` force-close then re-enters
+            // here via `ssl_on_close`. Resolve the VM via the global accessor
+            // (not `handlers.vm`) and bail before dereferencing `handlers` —
+            // mirrors the guard in `markInactive`.
+            const vm = jsc.VirtualMachine.get();
             this.poll_ref.unref(vm);
+            if (vm.isShuttingDown()) {
+                return;
+            }
+
+            const handlers = this.getHandlers();
+            log("onClose {s}", .{if (handlers.mode == .server) "S" else "C"});
 
             const callback = handlers.onClose;
 
             if (callback == .zero)
                 return;
-
-            if (vm.isShuttingDown()) {
-                return;
-            }
 
             // the handlers must be kept alive for the duration of the function call
             // that way if we need to call the error handler, we can

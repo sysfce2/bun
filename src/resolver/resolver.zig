@@ -2263,7 +2263,7 @@ pub const Resolver = struct {
 
         if (rfs.entries.atIndex(cached_dir_entry_result.index)) |cached_entry| {
             if (cached_entry.* == .entries) {
-                if (cached_entry.entries.generation >= r.generation) {
+                if (!cached_entry.entries.stale and cached_entry.entries.generation >= r.generation) {
                     dir_entries_option = cached_entry;
                     needs_iter = false;
                 } else {
@@ -2971,7 +2971,7 @@ pub const Resolver = struct {
 
             if (rfs.entries.atIndex(cached_dir_entry_result.index)) |cached_entry| {
                 if (cached_entry.* == .entries) {
-                    if (cached_entry.entries.generation >= r.generation) {
+                    if (!cached_entry.entries.stale and cached_entry.entries.generation >= r.generation) {
                         dir_entries_option = cached_entry;
                         needs_iter = false;
                     } else {

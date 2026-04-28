@@ -2263,7 +2263,10 @@ pub const Resolver = struct {
 
         if (rfs.entries.atIndex(cached_dir_entry_result.index)) |cached_entry| {
             if (cached_entry.* == .entries) {
-                if (cached_entry.entries.generation >= r.generation) {
+                // A reclaimed slot (status == .unknown) was busted — its data is
+                // stale regardless of generation, but the DirEntry allocation can
+                // still be reused in place.
+                if (cached_dir_entry_result.status == .exists and cached_entry.entries.generation >= r.generation) {
                     dir_entries_option = cached_entry;
                     needs_iter = false;
                 } else {
@@ -2307,6 +2310,13 @@ pub const Resolver = struct {
             }) catch unreachable;
         }
 
+        var reuse_package_json: ?*PackageJSON = null;
+        var reuse_tsconfig_json: ?*TSConfigJSON = null;
+        if (r.dir_cache.atIndex(dir_cache_info_result.index)) |prev| {
+            reuse_package_json = prev.package_json;
+            reuse_tsconfig_json = prev.tsconfig_json;
+        }
+
         // We must initialize it as empty so that the result index is correct.
         // This is important so that browser_scope has a valid index.
         const dir_info_ptr = r.dir_cache.put(&dir_cache_info_result, .{}) catch unreachable;
@@ -2327,6 +2337,8 @@ pub const Resolver = struct {
             allocators.NotFound,
             open_dir,
             package_id,
+            reuse_package_json,
+            reuse_tsconfig_json,
         );
         return dir_info_ptr;
     }
@@ -2592,6 +2604,11 @@ pub const Resolver = struct {
         r: *ThisResolver,
         file: string,
         dirname_fd: FD,
+        /// When re-reading a directory whose cache was busted, pass the
+        /// previous heap allocation so we overwrite it in place instead of
+        /// leaking it. Child DirInfo.enclosing_tsconfig_json pointers keep
+        /// working because the address is preserved.
+        reuse: ?*TSConfigJSON,
     ) !?*TSConfigJSON {
         // Since tsconfig.json is cached permanently, in our DirEntries cache
         // we must use the global allocator
@@ -2630,6 +2647,13 @@ pub const Resolver = struct {
             result.base_url_for_paths = r.fs.dirname_store.append(string, r.fs.absBuf(&paths, bufs(.tsconfig_base_url))) catch unreachable;
         }
 
+        if (reuse) |prev| {
+            prev.paths.deinit();
+            prev.* = result.*;
+            bun.destroy(result);
+            return prev;
+        }
+
         return result;
     }
 
@@ -2643,6 +2667,11 @@ pub const Resolver = struct {
         file: string,
         dirname_fd: FD,
         package_id: ?Install.PackageID,
+        /// When re-reading a directory whose cache was busted, pass the
+        /// previous heap allocation so we overwrite it in place instead of
+        /// leaking it. Child DirInfo.enclosing_package_json pointers keep
+        /// working because the address is preserved.
+        reuse: ?*PackageJSON,
         comptime allow_dependencies: bool,
     ) !?*PackageJSON {
         var pkg: PackageJSON = undefined;
@@ -2664,6 +2693,11 @@ pub const Resolver = struct {
                 .include_scripts,
                 if (allow_dependencies) .local else .none,
             ) orelse return null;
+        }
+
+        if (reuse) |prev| {
+            prev.* = pkg;
+            return prev;
         }
 
         return PackageJSON.new(pkg);
@@ -2971,7 +3005,10 @@ pub const Resolver = struct {
 
             if (rfs.entries.atIndex(cached_dir_entry_result.index)) |cached_entry| {
                 if (cached_entry.* == .entries) {
-                    if (cached_entry.entries.generation >= r.generation) {
+                    // A reclaimed slot (status == .unknown) was busted — its data is
+                    // stale regardless of generation, but the DirEntry allocation can
+                    // still be reused in place.
+                    if (cached_dir_entry_result.status == .exists and cached_entry.entries.generation >= r.generation) {
                         dir_entries_option = cached_entry;
                         needs_iter = false;
                     } else {
@@ -3009,6 +3046,17 @@ pub const Resolver = struct {
                 bun.fs.debug("readdir({f}, {s}) = {d}", .{ open_dir, dir_path, dir_entries_ptr.data.count() });
             }
 
+            // If this key previously had a slot (busted via bustDirCache), reuse
+            // its heap-allocated PackageJSON / TSConfigJSON instead of leaking
+            // them. atIndex() returns null for Unassigned/NotFound, so this is a
+            // no-op on first population.
+            var reuse_package_json: ?*PackageJSON = null;
+            var reuse_tsconfig_json: ?*TSConfigJSON = null;
+            if (r.dir_cache.atIndex(queue_top.result.index)) |prev| {
+                reuse_package_json = prev.package_json;
+                reuse_tsconfig_json = prev.tsconfig_json;
+            }
+
             // We must initialize it as empty so that the result index is correct.
             // This is important so that browser_scope has a valid index.
             const dir_info_ptr = try r.dir_cache.put(&queue_top.result, DirInfo{});
@@ -3023,6 +3071,8 @@ pub const Resolver = struct {
                 top_parent.index,
                 open_dir,
                 null,
+                reuse_package_json,
+                reuse_tsconfig_json,
             );
 
             if (queue_slice.len == 0) {
@@ -4059,6 +4109,10 @@ pub const Resolver = struct {
         parent_index: allocators.IndexType,
         fd: FileDescriptorType,
         package_id: ?Install.PackageID,
+        /// Previous heap allocations to overwrite in place when re-populating
+        /// a DirInfo slot after bustDirCache(). Null on first population.
+        reuse_package_json: ?*PackageJSON,
+        reuse_tsconfig_json: ?*TSConfigJSON,
     ) anyerror!void {
         const result = _result;
 
@@ -4213,9 +4267,9 @@ pub const Resolver = struct {
                 const entry = lookup.entry;
                 if (entry.kind(rfs, r.store_fd) == .file) {
                     info.package_json = if (r.usePackageManager() and !info.hasNodeModules() and !info.isNodeModules())
-                        r.parsePackageJSON(path, if (FeatureFlags.store_file_descriptors) fd else .invalid, package_id, true) catch null
+                        r.parsePackageJSON(path, if (FeatureFlags.store_file_descriptors) fd else .invalid, package_id, reuse_package_json, true) catch null
                     else
-                        r.parsePackageJSON(path, if (FeatureFlags.store_file_descriptors) fd else .invalid, null, false) catch null;
+                        r.parsePackageJSON(path, if (FeatureFlags.store_file_descriptors) fd else .invalid, null, reuse_package_json, false) catch null;
 
                     if (info.package_json) |pkg| {
                         if (pkg.browser_map.count() > 0) {
@@ -4268,6 +4322,7 @@ pub const Resolver = struct {
                 info.tsconfig_json = r.parseTSConfig(
                     tsconfigpath,
                     if (FeatureFlags.store_file_descriptors) fd else .zero,
+                    reuse_tsconfig_json,
                 ) catch |err| brk: {
                     const pretty = tsconfigpath;
                     if (err == error.ENOENT or err == error.FileNotFound) {
@@ -4284,7 +4339,7 @@ pub const Resolver = struct {
                     while (current.extends.len > 0) {
                         const ts_dir_name = Dirname.dirname(current.abs_path);
                         const abs_path = ResolvePath.joinAbsStringBuf(ts_dir_name, bufs(.tsconfig_path_abs), &[_]string{ ts_dir_name, current.extends }, .auto);
-                        const parent_config_maybe = r.parseTSConfig(abs_path, bun.invalid_fd) catch |err| {
+                        const parent_config_maybe = r.parseTSConfig(abs_path, bun.invalid_fd, null) catch |err| {
                             r.log.addDebugFmt(null, logger.Loc.Empty, r.allocator, "{s} loading tsconfig.json extends {f}", .{
                                 @errorName(err),
                                 bun.fmt.QuotedFormatter{

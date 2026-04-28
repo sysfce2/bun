@@ -1,5 +1,5 @@
-import { test, expect, describe } from "bun:test";
-import { bunEnv, bunExe, tls } from "harness";
+import { describe, expect, test } from "bun:test";
+import { bunEnv, bunExe, isASAN, tls } from "harness";
 import { once } from "node:events";
 import http2 from "node:http2";
 import https from "node:https";
@@ -77,13 +77,29 @@ type RawConn = {
   goaway(lastId: number, code: number): void;
 };
 
+type RawState = {
+  connections: number;
+  rst: Array<{ id: number; code: number }>;
+  /** Resolves once every accepted socket has emitted `close` — i.e. all
+   *  in-flight client frames have been delivered to the `data` handler.
+   *  Tests asserting on server-side capture (`state.rst`) should await this
+   *  instead of racing the subprocess exit. */
+  allClosed: () => Promise<void>;
+};
+
 async function withRawH2Server(
   onStream: (conn: RawConn, streamId: number, connIndex: number) => void,
-  fn: (url: string, state: { connections: number; rst: Array<{ id: number; code: number }> }) => Promise<void>,
+  fn: (url: string, state: RawState) => Promise<void>,
 ) {
-  const state = { connections: 0, rst: [] as Array<{ id: number; code: number }> };
+  const closed: Promise<unknown>[] = [];
+  const state: RawState = {
+    connections: 0,
+    rst: [],
+    allClosed: () => Promise.all(closed).then(() => {}),
+  };
   const server = nodetls.createServer({ ...tls, ALPNProtocols: ["h2"] }, socket => {
     const connIndex = state.connections++;
+    closed.push(once(socket, "close"));
     const conn: RawConn = {
       socket,
       settings: () => socket.write(frame(4, 0, 0)),
@@ -142,7 +158,10 @@ function spawnFetch(script: string) {
   });
 }
 
-describe.concurrent("fetch() over HTTP/2 (BUN_FEATURE_FLAG_EXPERIMENTAL_HTTP2_CLIENT)", () => {
+// Under ASAN, 20 concurrent ASAN-instrumented subprocesses (~800MB+ each) OOM-kill
+// the 16GB CI runner. Serialise so the asan shard survives; everywhere else stays
+// concurrent (peak ≈8GB across ~23 debug procs).
+(isASAN ? describe : describe.concurrent)("fetch() over HTTP/2 (BUN_FEATURE_FLAG_EXPERIMENTAL_HTTP2_CLIENT)", () => {
   test("GET: status, headers and body round-trip", async () => {
     await withH2Server(
       (req, res) => {
@@ -1330,6 +1349,7 @@ describe.concurrent("fetch() over HTTP/2 (BUN_FEATURE_FLAG_EXPERIMENTAL_HTTP2_CL
           const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
           expect(stderr).toBe("");
           expect(stdout.trim()).toBe("200 true");
+          await state.allClosed();
           expect(state.rst).toEqual([{ id: 1, code: 8 }]);
           expect(exitCode).toBe(0);
         },
@@ -1353,6 +1373,7 @@ describe.concurrent("fetch() over HTTP/2 (BUN_FEATURE_FLAG_EXPERIMENTAL_HTTP2_CL
           const [stdout, , exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
           expect(stdout).toContain("rejected");
           expect(exitCode).toBe(0);
+          await state.allClosed();
           // 0x8 = CANCEL
           expect(state.rst).toEqual([{ id: 1, code: 8 }]);
         },

@@ -1715,6 +1715,13 @@ fn _resolve(
         ret.result = null;
         ret.path = result.path;
         return;
+    } else if ((Environment.isDebug or ModuleLoader.is_allowed_to_use_internal_testing_apis) and
+        jsc.ModuleLoader.ExposedInternals.map.has(specifier))
+    {
+        // Node.js `--expose-internals`: allow `require("internal/errors")` etc.
+        ret.result = null;
+        ret.path = try bun.default_allocator.dupe(u8, specifier);
+        return;
     } else if (jsc_vm.module_loader.eval_source != null and
         (strings.endsWithComptime(specifier, bun.pathLiteral("/[eval]")) or
             strings.endsWithComptime(specifier, bun.pathLiteral("/[stdin]"))))
@@ -1898,6 +1905,14 @@ pub fn resolveMaybeNeedsTrailingSlash(
             else
                 bun.String.init(hardcoded.path),
         );
+        return;
+    }
+
+    if ((Environment.isDebug or ModuleLoader.is_allowed_to_use_internal_testing_apis) and
+        jsc.ModuleLoader.ExposedInternals.map.has(specifier_utf8.slice()))
+    {
+        // Node.js `--expose-internals`: allow `require("internal/errors")` etc.
+        res.* = ErrorableString.ok(specifier);
         return;
     }
 

@@ -1025,8 +1025,13 @@ export const stripFlags: Flag[] = [
     // GNU strip does not rewrite the program header table — so any
     // PT_GNU_EH_FRAME phdr entry also survives as an orphan. See the
     // --no-eh-frame-hdr rationale in linkFlags above.
+    //
+    // Gated on c.lto to match the --no-eh-frame-hdr link flag: without LTO the
+    // linker is told --eh-frame-hdr, so PT_GNU_EH_FRAME exists, and stripping
+    // the section it points at makes every pthread_exit() unwind SIGSEGV on
+    // the dangling vaddr (visible on any Worker teardown).
     flag: ["-R", ".eh_frame", "-R", ".eh_frame_hdr", "-R", ".gcc_except_table"],
-    when: c => c.linux && c.abi === "gnu",
+    when: c => c.linux && c.abi === "gnu" && c.lto,
     desc: "Remove unwind sections (GNU strip required — llvm-strip leaves [LOAD #2 [R]])",
   },
 ];

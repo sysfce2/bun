@@ -2522,14 +2522,6 @@ void GlobalObject::finishCreation(VM& vm)
             init.setConstructor(constructor);
         });
 
-    m_callSiteStructure.initLater(
-        [](LazyClassStructure::Initializer& init) {
-            auto* prototype = CallSitePrototype::create(init.vm, CallSitePrototype::createStructure(init.vm, init.global, init.global->objectPrototype()), init.global);
-            auto* structure = CallSite::createStructure(init.vm, init.global, prototype);
-            init.setPrototype(prototype);
-            init.setStructure(structure);
-        });
-
     m_JSStringDecoderClassStructure.initLater(
         [](LazyClassStructure::Initializer& init) {
             auto* prototype = JSStringDecoderPrototype::create(

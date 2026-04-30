@@ -1351,6 +1351,7 @@ pub fn sliceTo(pointer: anytype, comptime end: std.meta.Elem(@TypeOf(pointer))) 
 pub const Semver = @import("./semver.zig");
 pub const ImportRecord = @import("./import_record.zig").ImportRecord;
 pub const ImportKind = @import("./import_record.zig").ImportKind;
+pub const ImportPhase = @import("./import_record.zig").ImportPhase;
 
 pub const Watcher = @import("./Watcher.zig");
 

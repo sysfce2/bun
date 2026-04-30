@@ -407,6 +407,8 @@ pub const FileSystemRouter = struct {
 
         this.router.deinit();
         this.arena.deinit();
+        bun.default_allocator.destroy(this.arena);
+        bun.default_allocator.destroy(this);
     }
 };
 

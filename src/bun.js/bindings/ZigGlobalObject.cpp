@@ -67,8 +67,6 @@
 #include "BunPlugin.h"
 #include "BunProcess.h"
 #include "BunWorkerGlobalScope.h"
-#include "CallSite.h"
-#include "CallSitePrototype.h"
 #include "FormatStackTraceForJS.h"
 #include "JSCommonJSModule.h"
 #include "JSCommonJSExtensions.h"

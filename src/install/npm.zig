@@ -1714,7 +1714,7 @@ pub const PackageManifest = struct {
         const left = group.head.head.range.left;
         var newest_filtered: ?Semver.Version = null;
 
-        if (left.op == .eql) {
+        if (group.isExact()) {
             const result = this.findByVersion(left.version);
             if (result) |r| {
                 if (isPackageVersionTooRecent(r.package, min_age_ms)) {
@@ -1776,7 +1776,7 @@ pub const PackageManifest = struct {
     pub fn findBestVersion(this: *const PackageManifest, group: Semver.Query.Group, group_buf: string) ?FindResult {
         const left = group.head.head.range.left;
         // Fast path: exact version
-        if (left.op == .eql) {
+        if (group.isExact()) {
             return this.findByVersion(left.version);
         }
 

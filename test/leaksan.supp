@@ -61,7 +61,6 @@ leak:bun.js.api.bun.dns.GetAddrInfoRequest.run
 leak:deps.tcc.State.init__anon
 leak:dynamic_library.DlDynLib.open
 leak:Zig::ImportMetaObject::finishCreation
-leak:uws_add_server_name_with_options
 leak:bun.js.webcore.Body.Value.fromJS
 leak:sys.Error.toSystemError
 leak:bun.js.webcore.Blob.getNameString

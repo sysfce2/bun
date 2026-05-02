@@ -61,6 +61,13 @@ mime_types: ?bun.http.MimeType.Map = null,
 
 node_fs_stat_watcher_scheduler: ?bun.ptr.RefPtr(StatWatcherScheduler) = null,
 
+/// Windows `fs.watch()` dedup map. Per-VM (not process-global) because each
+/// `uv_fs_event_t` is bound to a specific `uv_loop_t` and libuv handles aren't
+/// thread-safe — a Worker's watcher must live on the Worker's own loop. See
+/// `win_watcher.zig` PathWatcherManager doc comment.
+windows_path_watcher_manager: if (bun.Environment.isWindows) ?*WinWatcher.PathWatcherManager else void =
+    if (bun.Environment.isWindows) null else {},
+
 listening_sockets_for_watch_mode: std.ArrayListUnmanaged(bun.FD) = .{},
 listening_sockets_for_watch_mode_lock: bun.Mutex = .{},
 
@@ -773,6 +780,15 @@ pub fn nodeFSStatWatcherScheduler(rare: *RareData, vm: *jsc.VirtualMachine) bun.
     }).dupeRef();
 }
 
+pub fn windowsPathWatcherManager(rare: *RareData, vm: *jsc.VirtualMachine) *WinWatcher.PathWatcherManager {
+    if (comptime !bun.Environment.isWindows)
+        @compileError("windowsPathWatcherManager is Windows-only");
+    return rare.windows_path_watcher_manager orelse {
+        rare.windows_path_watcher_manager = WinWatcher.PathWatcherManager.init(vm);
+        return rare.windows_path_watcher_manager.?;
+    };
+}
+
 pub fn s3DefaultClient(rare: *RareData, globalThis: *jsc.JSGlobalObject) jsc.JSValue {
     return rare.s3_default_client.get() orelse {
         const vm = globalThis.bunVM();
@@ -942,6 +958,9 @@ const ValkeyContext = @import("../valkey/valkey.zig").ValkeyContext;
 
 const StatWatcher = @import("./node/node_fs_stat_watcher.zig").StatWatcher;
 const StatWatcherScheduler = @import("./node/node_fs_stat_watcher.zig").StatWatcherScheduler;
+const WinWatcher = if (bun.Environment.isWindows) @import("./node/win_watcher.zig") else struct {
+    pub const PathWatcherManager = opaque {};
+};
 
 const bun = @import("bun");
 const Async = bun.Async;

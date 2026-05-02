@@ -165,9 +165,7 @@ test.skipIf(!isWindows)(
       "target.txt": "x",
       "worker.js": /* js */ `
         const fs = require("fs");
-        const path = require("path");
         const { parentPort, workerData } = require("worker_threads");
-        const file = path.join(workerData.dir, "target.txt");
 
         let got = 0;
         const w = fs.watch(workerData.dir, () => { got++; });

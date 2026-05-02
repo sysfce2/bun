@@ -949,6 +949,10 @@ pub fn spawnSyncEventLoop(this: *RareData, vm: *jsc.VirtualMachine) *SpawnSyncEv
     };
 }
 
+const WinWatcher = if (bun.Environment.isWindows) @import("./node/win_watcher.zig") else struct {
+    pub const PathWatcherManager = opaque {};
+};
+
 const UUID = @import("./uuid.zig");
 const WebSocketDeflate = @import("../http/websocket_client/WebSocketDeflate.zig");
 const std = @import("std");
@@ -958,9 +962,6 @@ const ValkeyContext = @import("../valkey/valkey.zig").ValkeyContext;
 
 const StatWatcher = @import("./node/node_fs_stat_watcher.zig").StatWatcher;
 const StatWatcherScheduler = @import("./node/node_fs_stat_watcher.zig").StatWatcherScheduler;
-const WinWatcher = if (bun.Environment.isWindows) @import("./node/win_watcher.zig") else struct {
-    pub const PathWatcherManager = opaque {};
-};
 
 const bun = @import("bun");
 const Async = bun.Async;

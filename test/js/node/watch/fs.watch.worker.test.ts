@@ -27,13 +27,11 @@ import { bunEnv, bunExe, isWindows, tempDir } from "harness";
 //
 // On POSIX this test is a cross-platform guard that `fs.watch` works from
 // Workers at all; the crash it catches is Windows-specific.
-test(
-  "fs.watch from a Worker uses the Worker's own uv loop",
-  async () => {
-    using dir = tempDir("fswatch-worker", {
-      "main-a.txt": "x",
-      "main-b.txt": "x",
-      "worker.js": /* js */ `
+test("fs.watch from a Worker uses the Worker's own uv loop", async () => {
+  using dir = tempDir("fswatch-worker", {
+    "main-a.txt": "x",
+    "main-b.txt": "x",
+    "worker.js": /* js */ `
         const fs = require("fs");
         const path = require("path");
         const { parentPort, workerData } = require("worker_threads");
@@ -70,7 +68,7 @@ test(
         }
         setImmediate(step);
       `,
-      "main.js": /* js */ `
+    "main.js": /* js */ `
         const fs = require("fs");
         const path = require("path");
         const { Worker } = require("worker_threads");
@@ -136,25 +134,23 @@ test(
         }, 30000);
         wd.unref();
       `,
-    });
+  });
 
-    await using proc = Bun.spawn({
-      cmd: [bunExe(), "main.js", String(dir)],
-      env: bunEnv,
-      cwd: String(dir),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "main.js", String(dir)],
+    env: bunEnv,
+    cwd: String(dir),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
 
-    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
 
-    expect(stderr).not.toContain("HUNG");
-    expect(stderr).not.toContain("worker error");
-    expect(stdout.trim()).toBe("OK");
-    expect(exitCode).toBe(0);
-  },
-  60000,
-);
+  expect(stderr).not.toContain("HUNG");
+  expect(stderr).not.toContain("worker error");
+  expect(stdout.trim()).toBe("OK");
+  expect(exitCode).toBe(0);
+}, 60000);
 
 // Windows-specific: two Workers watching the *same* path. On the broken
 // build both hit the same `PathWatcherManager` (owned by the main VM) and

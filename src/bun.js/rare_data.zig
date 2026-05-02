@@ -879,6 +879,13 @@ pub fn deinit(this: *RareData) void {
 
     this.valkey_context.deinit();
 
+    if (comptime bun.Environment.isWindows) {
+        if (this.windows_path_watcher_manager) |m| {
+            this.windows_path_watcher_manager = null;
+            m.deinit();
+        }
+    }
+
     if (this.default_client_ssl_ctx) |s| bun.BoringSSL.c.SSL_CTX_free(s);
     // After the default-ctx free so the tombstone callback still finds a live
     // map; deinit then clears every remaining entry's ex_data so any later

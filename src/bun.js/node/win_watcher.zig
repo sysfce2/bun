@@ -39,6 +39,25 @@ pub const PathWatcherManager = struct {
             _ = this.watchers.swapRemoveAt(index);
         }
     }
+
+    /// Called from `RareData.deinit()` on VM shutdown. Frees the manager itself
+    /// and the owned key strings, but deliberately does NOT touch any surviving
+    /// `PathWatcher` entries: their `uv_fs_event_t` handles live on this VM's
+    /// `uv_loop_t`, which is being torn down, and calling `uv_close` on a
+    /// dead/dying loop is undefined. In normal shutdown the FSWatcher finalizers
+    /// have already emptied the map via `detach()` → `unregisterWatcher()`.
+    pub fn deinit(this: *PathWatcherManager) void {
+        for (this.watchers.values()) |watcher| {
+            // Orphan it so a late finalizer's `detach()` won't walk back into
+            // a freed manager.
+            watcher.manager = null;
+        }
+        for (this.watchers.keys()) |path| {
+            bun.default_allocator.free(path);
+        }
+        this.watchers.deinit(bun.default_allocator);
+        bun.destroy(this);
+    }
 };
 
 pub const PathWatcher = struct {

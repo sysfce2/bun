@@ -901,8 +901,6 @@ pub fn constructInto(globalThis: *jsc.JSGlobalObject, arguments: []const jsc.JSV
                     fields.insert(.keepalive);
                 }
             }
-
-            if (globalThis.hasException()) return error.JSError;
         }
 
         // Extract integrity option (spec: `init["integrity"] !== undefined`
@@ -915,8 +913,6 @@ pub fn constructInto(globalThis: *jsc.JSGlobalObject, arguments: []const jsc.JSV
                     fields.insert(.integrity);
                 }
             }
-
-            if (globalThis.hasException()) return error.JSError;
         }
 
         // Extract referrer option (spec: `init["referrer"] !== undefined`
@@ -943,8 +939,6 @@ pub fn constructInto(globalThis: *jsc.JSGlobalObject, arguments: []const jsc.JSV
                     fields.insert(.referrer);
                 }
             }
-
-            if (globalThis.hasException()) return error.JSError;
         }
     }
 

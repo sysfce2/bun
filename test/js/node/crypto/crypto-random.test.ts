@@ -59,7 +59,7 @@ describe("randomBytes", () => {
   });
 });
 
-describe("async crypto does not touch a detached ArrayBuffer backing store", () => {
+describe.concurrent("async crypto does not touch a detached ArrayBuffer backing store", () => {
   // Before the fix, the async variants captured a raw pointer into the
   // ArrayBuffer backing store and only `protect()`ed the JS wrapper. Calling
   // `buffer.transfer()` with a different length frees that storage
